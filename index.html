@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Survivor Quest - Topdown Action</title>
+  <link rel="stylesheet" href="style.css">
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Rajdhani:wght@600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div id="game-container">
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- HUD Overlay -->
+    <div id="hud" class="hidden">
+      <div class="hud-top-left">
+        <div class="hud-box player-info">
+          <div class="skin-avatar-box">
+            <img id="hud-avatar" src="" alt="Hero">
+          </div>
+          <div class="bars-container">
+            <div class="bar-wrapper health-wrapper">
+              <div class="bar-label">HP</div>
+              <div class="bar-outer">
+                <div id="hp-bar-inner" class="bar-inner hp-fill"></div>
+              </div>
+              <span id="hp-text">100 / 100</span>
+            </div>
+            <div class="bar-wrapper exp-wrapper">
+              <div class="bar-label">EXP</div>
+              <div class="bar-outer">
+                <div id="exp-bar-inner" class="bar-inner exp-fill"></div>
+              </div>
+              <span id="exp-text">Lvl 1 (0 / 10)</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="hud-top-center">
+        <div class="hud-box timer-box">
+          <span class="hud-label">SURVIVED</span>
+          <span id="timer-display">00:00</span>
+        </div>
+      </div>
+
+      <div class="hud-top-right">
+        <div class="hud-box stats-box">
+          <div class="stat-item">
+            <span class="stat-icon">💀</span>
+            <span id="kills-display">0</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-icon">⭐</span>
+            <span id="score-display">0</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Start Screen Modal -->
+    <div id="start-modal" class="modal-overlay">
+      <div class="modal-card start-card">
+        <h1 class="game-title">SURVIVOR <span>QUEST</span></h1>
+        <p class="tagline">Survive the endless monster hordes!</p>
+
+        <div class="character-preview-box">
+          <div class="preview-title">YOUR RANDOM HERO</div>
+          <div class="hero-preview-stage">
+            <img id="preview-skin-img" src="" alt="Random Skin">
+            <img id="preview-weapon-img" src="" alt="Weapon">
+          </div>
+          <div id="hero-name-tag" class="hero-name">Agent #01</div>
+        </div>
+
+        <div class="controls-guide">
+          <h3>CONTROLS</h3>
+          <div class="key-grid">
+            <div class="key-item">
+              <span class="key-badge">W A S D</span> / <span class="key-badge">ARROWS</span>
+              <span class="key-desc">8-Directional Movement</span>
+            </div>
+            <div class="key-item">
+              <span class="key-badge">MOUSE</span>
+              <span class="key-desc">Aim Weapon</span>
+            </div>
+            <div class="key-item">
+              <span class="key-badge">LEFT CLICK / HOLD</span>
+              <span class="key-desc">Shoot Weapon</span>
+            </div>
+            <div class="key-item">
+              <span class="key-badge">P / ESC</span>
+              <span class="key-desc">Pause Game</span>
+            </div>
+          </div>
+        </div>
+
+        <button id="start-btn" class="btn btn-primary">START SURVIVAL</button>
+      </div>
+    </div>
+
+    <!-- Level Up Modal -->
+    <div id="levelup-modal" class="modal-overlay hidden">
+      <div class="modal-card levelup-card">
+        <h2>LEVEL UP!</h2>
+        <p class="levelup-subtitle">Choose an upgrade to enhance your survivor:</p>
+        <div id="upgrade-options" class="upgrade-grid">
+          <!-- Dynamically populated options -->
+        </div>
+      </div>
+    </div>
+
+    <!-- Game Over Modal -->
+    <div id="gameover-modal" class="modal-overlay hidden">
+      <div class="modal-card gameover-card">
+        <h1 class="over-title">YOU DIED</h1>
+        <div class="final-stats">
+          <div class="final-stat-row">
+            <span>Time Survived:</span>
+            <strong id="final-time">00:00</strong>
+          </div>
+          <div class="final-stat-row">
+            <span>Enemies Defeated:</span>
+            <strong id="final-kills">0</strong>
+          </div>
+          <div class="final-stat-row">
+            <span>Level Reached:</span>
+            <strong id="final-level">1</strong>
+          </div>
+          <div class="final-stat-row">
+            <span>Final Score:</span>
+            <strong id="final-score">0</strong>
+          </div>
+        </div>
+        <button id="restart-btn" class="btn btn-primary">PLAY AGAIN</button>
+      </div>
+    </div>
+
+    <!-- Pause Screen Modal -->
+    <div id="pause-modal" class="modal-overlay hidden">
+      <div class="modal-card pause-card">
+        <h2>GAME PAUSED</h2>
+        <p>Press <strong>P</strong> or <strong>ESC</strong> to resume</p>
+        <button id="resume-btn" class="btn btn-secondary">RESUME</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="game.js"></script>
+</body>
+</html>
