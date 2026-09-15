@@ -242,7 +242,6 @@ let floatingTexts = [];
 let spawnTimer = 0;
 let spawnInterval = 1000; // ms between enemy spawns
 
-// Upgrade Options Pool
 const ALL_UPGRADES = [
   { id: 'multishot', title: 'Multishot', desc: '+1 Additional projectile per shot', icon: '🏹' },
   { id: 'firerate', title: 'Rapid Fire', desc: '+25% Faster shooting speed', icon: '⚡' },
@@ -257,8 +256,9 @@ class Player {
   constructor(x, y) {
     this.x = x;
     this.y = y;
-    this.width = 48;
-    this.height = 64;
+    this.targetHeight = 58; // Base target height
+    this.width = 44;       // Flexible width calculated dynamically
+    this.height = this.targetHeight;
     this.speed = 220; // pixels / sec
 
     // Pick random skin and weapon
@@ -280,13 +280,20 @@ class Player {
     this.fireRate = 4; // shots per second
     this.fireTimer = 0;
     this.bulletCount = 1;
-    this.bulletSpeed = 600;
+    this.bulletSpeed = 650;
     this.pierce = 1;
     this.pickupRadius = 120;
 
     this.aimAngle = 0;
     this.facingRight = true;
     this.invulnerableTimer = 0;
+
+    // Procedural Walking Animation Variables
+    this.isWalking = false;
+    this.walkTimer = 0;
+    this.walkRotation = 0;
+    this.squeezeX = 1;
+    this.squeezeY = 1;
   }
 
   update(dt) {
@@ -307,6 +314,21 @@ class Player {
     this.x += dx * this.speed * dt;
     this.y += dy * this.speed * dt;
 
+    // Procedural Walking Animation (squeeze/stretch & rotation wobble)
+    if (dx !== 0 || dy !== 0) {
+      this.isWalking = true;
+      this.walkTimer += dt * 14;
+      this.squeezeY = 1 + Math.sin(this.walkTimer) * 0.1;
+      this.squeezeX = 1 - Math.sin(this.walkTimer) * 0.08;
+      this.walkRotation = Math.cos(this.walkTimer) * 0.12; // tilt left/right
+    } else {
+      this.isWalking = false;
+      this.walkTimer = 0;
+      this.squeezeX = 1;
+      this.squeezeY = 1;
+      this.walkRotation = 0;
+    }
+
     // Aim angle relative to center screen
     const screenX = canvas.width / 2;
     const screenY = canvas.height / 2;
@@ -324,15 +346,43 @@ class Player {
     }
 
     this.fireTimer += dt;
-    // Shooting mechanics (Auto-fire on hold or mouse click)
     if (mouse.isDown && this.fireTimer >= (1 / this.fireRate)) {
       this.shoot();
       this.fireTimer = 0;
     }
   }
 
+  getMuzzlePosition() {
+    // Calculate flexible weapon dimensions
+    const weaponTargetHeight = 22;
+    let weaponWidth = 45;
+    if (this.weaponImg && this.weaponImg.complete && this.weaponImg.naturalHeight) {
+      const aspect = this.weaponImg.naturalWidth / this.weaponImg.naturalHeight;
+      weaponWidth = weaponTargetHeight * aspect;
+    }
+
+    // Offset of weapon barrel tip relative to player center
+    const pivotX = 6;
+    const pivotY = 4;
+    const muzzleOffsetParallel = pivotX + weaponWidth;
+    const muzzleOffsetPerp = this.facingRight ? pivotY : -pivotY;
+
+    // Rotate local muzzle offset by aimAngle into world space
+    const muzzleX = this.x + Math.cos(this.aimAngle) * muzzleOffsetParallel - Math.sin(this.aimAngle) * muzzleOffsetPerp;
+    const muzzleY = this.y + Math.sin(this.aimAngle) * muzzleOffsetParallel + Math.cos(this.aimAngle) * muzzleOffsetPerp;
+
+    return { x: muzzleX, y: muzzleY };
+  }
+
   shoot() {
     audio.playShoot();
+    const muzzle = this.getMuzzlePosition();
+
+    // Muzzle flash particle effect
+    for (let k = 0; k < 3; k++) {
+      particles.push(new Particle(muzzle.x, muzzle.y, '#fef08a'));
+    }
+
     const spreadAngle = 0.15; // radians between multishot bullets
     const startAngle = this.aimAngle - ((this.bulletCount - 1) * spreadAngle) / 2;
 
@@ -340,14 +390,15 @@ class Player {
       const angle = startAngle + i * spreadAngle;
       const vx = Math.cos(angle) * this.bulletSpeed;
       const vy = Math.sin(angle) * this.bulletSpeed;
-      projectiles.push(new Projectile(this.x, this.y, vx, vy, this.damage, this.pierce));
+      // Bullets spawn directly at the weapon end point!
+      projectiles.push(new Projectile(muzzle.x, muzzle.y, vx, vy, this.damage, this.pierce));
     }
   }
 
   takeDamage(amount) {
     if (this.invulnerableTimer > 0) return;
     this.hp -= amount;
-    this.invulnerableTimer = 0.4; // 0.4s invulnerability window
+    this.invulnerableTimer = 0.4;
     audio.playPlayerHurt();
     createDamageText(this.x, this.y - 30, `-${Math.round(amount)}`, '#ef4444');
 
@@ -374,6 +425,14 @@ class Player {
     const screenX = this.x - cameraX;
     const screenY = this.y - cameraY;
 
+    // Calculate flexible player width based on image natural aspect ratio (no stretch)
+    let renderWidth = this.width;
+    let renderHeight = this.height;
+    if (this.skinImg && this.skinImg.complete && this.skinImg.naturalHeight) {
+      const aspect = this.skinImg.naturalWidth / this.skinImg.naturalHeight;
+      renderWidth = renderHeight * aspect;
+    }
+
     ctx.save();
     ctx.translate(screenX, screenY);
 
@@ -382,31 +441,41 @@ class Player {
       ctx.globalAlpha = 0.5;
     }
 
-    // Render Player Character Sprite
+    // Render Player Character Sprite with procedural Walking Animation (rotate + squeeze)
     ctx.save();
     if (!this.facingRight) {
       ctx.scale(-1, 1);
     }
+    ctx.rotate(this.walkRotation);
+    ctx.scale(this.squeezeX, this.squeezeY);
+
     if (this.skinImg && this.skinImg.complete) {
-      ctx.drawImage(this.skinImg, -this.width / 2, -this.height / 2, this.width, this.height);
+      ctx.drawImage(this.skinImg, -renderWidth / 2, -renderHeight / 2, renderWidth, renderHeight);
     } else {
-      // Fallback shape
       ctx.fillStyle = '#38bdf8';
-      ctx.fillRect(-this.width / 2, -this.height / 2, this.width, this.height);
+      ctx.fillRect(-renderWidth / 2, -renderHeight / 2, renderWidth, renderHeight);
     }
     ctx.restore();
 
-    // Render Weapon Attached in Hand & Aiming towards Mouse
+    // Render Weapon Attached in Hand & Aiming towards Mouse (flexible aspect ratio)
     ctx.save();
     ctx.rotate(this.aimAngle);
     if (!this.facingRight) {
       ctx.scale(1, -1);
     }
+
+    const weaponTargetHeight = 22;
+    let weaponWidth = 45;
+    if (this.weaponImg && this.weaponImg.complete && this.weaponImg.naturalHeight) {
+      const aspect = this.weaponImg.naturalWidth / this.weaponImg.naturalHeight;
+      weaponWidth = weaponTargetHeight * aspect;
+    }
+
     if (this.weaponImg && this.weaponImg.complete) {
-      ctx.drawImage(this.weaponImg, 10, -12, 40, 24);
+      ctx.drawImage(this.weaponImg, 6, -11, weaponWidth, weaponTargetHeight);
     } else {
       ctx.fillStyle = '#f59e0b';
-      ctx.fillRect(10, -5, 25, 10);
+      ctx.fillRect(6, -5, 25, 10);
     }
     ctx.restore();
 
@@ -423,7 +492,7 @@ class Projectile {
     this.damage = damage;
     this.pierce = pierce;
     this.radius = 6;
-    this.life = 2.0; // max 2 seconds
+    this.life = 2.0;
     this.hitEnemies = new Set();
   }
 
@@ -452,8 +521,9 @@ class Enemy {
   constructor(x, y, levelMultiplier) {
     this.x = x;
     this.y = y;
-    this.width = 44;
-    this.height = 58;
+    this.targetHeight = 52;
+    this.width = 40;
+    this.height = this.targetHeight;
     this.speed = 100 + Math.random() * 40;
 
     // Pick random enemy skin
@@ -464,10 +534,11 @@ class Enemy {
     this.hp = this.maxHp;
     this.damage = Math.round(10 * levelMultiplier);
     this.expValue = Math.round(3 * levelMultiplier);
+
+    this.walkTimer = Math.random() * 10;
   }
 
   update(dt, playerX, playerY) {
-    // Pathfinding directly towards player
     const dx = playerX - this.x;
     const dy = playerY - this.y;
     const dist = Math.hypot(dx, dy);
@@ -475,12 +546,20 @@ class Enemy {
     if (dist > 0) {
       this.x += (dx / dist) * this.speed * dt;
       this.y += (dy / dist) * this.speed * dt;
+      this.walkTimer += dt * 10;
     }
   }
 
   draw(ctx, cameraX, cameraY) {
     const screenX = this.x - cameraX;
     const screenY = this.y - cameraY;
+
+    let renderWidth = this.width;
+    let renderHeight = this.height;
+    if (this.skinImg && this.skinImg.complete && this.skinImg.naturalHeight) {
+      const aspect = this.skinImg.naturalWidth / this.skinImg.naturalHeight;
+      renderWidth = renderHeight * aspect;
+    }
 
     ctx.save();
     ctx.translate(screenX, screenY);
@@ -489,11 +568,17 @@ class Enemy {
       ctx.scale(-1, 1);
     }
 
+    // Walking animation for enemies
+    const walkRot = Math.cos(this.walkTimer) * 0.1;
+    const squeezeY = 1 + Math.sin(this.walkTimer) * 0.08;
+    ctx.rotate(walkRot);
+    ctx.scale(1, squeezeY);
+
     if (this.skinImg && this.skinImg.complete) {
-      ctx.drawImage(this.skinImg, -this.width / 2, -this.height / 2, this.width, this.height);
+      ctx.drawImage(this.skinImg, -renderWidth / 2, -renderHeight / 2, renderWidth, renderHeight);
     } else {
       ctx.fillStyle = '#ef4444';
-      ctx.fillRect(-this.width / 2, -this.height / 2, this.width, this.height);
+      ctx.fillRect(-renderWidth / 2, -renderHeight / 2, renderWidth, renderHeight);
     }
 
     ctx.restore();
@@ -504,7 +589,7 @@ class Enemy {
       const barW = 36;
       const barH = 5;
       const bx = screenX - barW / 2;
-      const by = screenY - this.height / 2 - 8;
+      const by = screenY - renderHeight / 2 - 8;
       ctx.fillStyle = 'rgba(0,0,0,0.6)';
       ctx.fillRect(bx, by, barW, barH);
       ctx.fillStyle = '#ef4444';
@@ -520,7 +605,7 @@ class Gem {
     this.y = y;
     this.value = value;
     this.radius = 6;
-    this.isHealth = Math.random() < 0.15; // 15% chance to be health pickup
+    this.isHealth = Math.random() < 0.15;
   }
 
   update(dt, player) {
@@ -542,7 +627,7 @@ class Gem {
         } else {
           player.gainExp(this.value);
         }
-        return true; // collected
+        return true;
       }
     }
     return false;
@@ -620,7 +705,6 @@ function init() {
   document.getElementById('restart-btn').addEventListener('click', restartGame);
   document.getElementById('resume-btn').addEventListener('click', togglePause);
 
-  // Preload assets and update preview modal
   loadAssets(() => {
     setupPreviewModal();
   });
@@ -692,7 +776,6 @@ function triggerLevelUp() {
   const container = document.getElementById('upgrade-options');
   container.innerHTML = '';
 
-  // Pick 3 random upgrades from pool
   const shuffled = [...ALL_UPGRADES].sort(() => 0.5 - Math.random());
   const choices = shuffled.slice(0, 3);
 
@@ -756,13 +839,11 @@ function gameOver() {
 }
 
 function spawnEnemy() {
-  // Spawn outside of current screen view
   const angle = Math.random() * Math.PI * 2;
   const dist = Math.hypot(canvas.width, canvas.height) / 2 + 100;
   const ex = player.x + Math.cos(angle) * dist;
   const ey = player.y + Math.sin(angle) * dist;
 
-  // Scale enemy stats based on time survived
   const levelMult = 1 + (survivalTimer / 60) * 0.4;
   enemies.push(new Enemy(ex, ey, levelMult));
 }
@@ -791,17 +872,15 @@ function formatTimer(seconds) {
 
 function gameLoop(timestamp) {
   if (!lastTime) lastTime = timestamp;
-  const dt = Math.min((timestamp - lastTime) / 1000, 0.1); // cap dt at 0.1s
+  const dt = Math.min((timestamp - lastTime) / 1000, 0.1);
   lastTime = timestamp;
 
   if (gameState === 'PLAYING') {
     survivalTimer += dt;
     score = Math.floor(survivalTimer * 10 + kills * 50);
 
-    // Update Player
     player.update(dt);
 
-    // Enemy Spawning Logic
     spawnTimer += dt * 1000;
     const currentInterval = Math.max(250, spawnInterval - (survivalTimer / 30) * 100);
     if (spawnTimer >= currentInterval) {
@@ -809,7 +888,6 @@ function gameLoop(timestamp) {
       spawnTimer = 0;
     }
 
-    // Update Projectiles
     for (let i = projectiles.length - 1; i >= 0; i--) {
       const p = projectiles[i];
       p.update(dt);
@@ -818,18 +896,15 @@ function gameLoop(timestamp) {
       }
     }
 
-    // Update Enemies & Collisions
     for (let i = enemies.length - 1; i >= 0; i--) {
       const e = enemies[i];
       e.update(dt, player.x, player.y);
 
-      // Check collision with Player
       const distToPlayer = Math.hypot(e.x - player.x, e.y - player.y);
       if (distToPlayer < (e.width / 2 + player.width / 3)) {
         player.takeDamage(e.damage);
       }
 
-      // Check collision with Projectiles
       for (let j = projectiles.length - 1; j >= 0; j--) {
         const p = projectiles[j];
         if (p.hitEnemies.has(e)) continue;
@@ -841,7 +916,6 @@ function gameLoop(timestamp) {
           audio.playHit();
           createDamageText(e.x, e.y - 20, Math.round(p.damage), '#facc15');
 
-          // Spawn blood/impact particles
           for (let k = 0; k < 4; k++) {
             particles.push(new Particle(e.x, e.y, '#ef4444'));
           }
@@ -851,12 +925,10 @@ function gameLoop(timestamp) {
           }
 
           if (e.hp <= 0) {
-            // Enemy Defeated
             kills++;
             gems.push(new Gem(e.x, e.y, e.expValue));
             enemies.splice(i, 1);
 
-            // Defeat particles
             for (let k = 0; k < 10; k++) {
               particles.push(new Particle(e.x, e.y, '#94a3b8'));
             }
@@ -866,14 +938,12 @@ function gameLoop(timestamp) {
       }
     }
 
-    // Update Gems & Powerups
     for (let i = gems.length - 1; i >= 0; i--) {
       if (gems[i].update(dt, player)) {
         gems.splice(i, 1);
       }
     }
 
-    // Update Particles
     for (let i = particles.length - 1; i >= 0; i--) {
       particles[i].update(dt);
       if (particles[i].life <= 0) {
@@ -881,7 +951,6 @@ function gameLoop(timestamp) {
       }
     }
 
-    // Update Floating Texts
     for (let i = floatingTexts.length - 1; i >= 0; i--) {
       const ft = floatingTexts[i];
       ft.y -= 30 * dt;
@@ -894,7 +963,6 @@ function gameLoop(timestamp) {
     updateHUD();
   }
 
-  // RENDER GAME SCENE
   render();
 
   requestAnimationFrame(gameLoop);
@@ -906,7 +974,6 @@ function render() {
   const cameraX = player ? player.x - canvas.width / 2 : 0;
   const cameraY = player ? player.y - canvas.height / 2 : 0;
 
-  // 1. Draw Tiled Background Texture
   if (ASSETS.background && ASSETS.background.complete) {
     const tw = ASSETS.background.width || 554;
     const th = ASSETS.background.height || 554;
@@ -926,22 +993,12 @@ function render() {
 
   if (!player) return;
 
-  // 2. Draw Gems
   gems.forEach((g) => g.draw(ctx, cameraX, cameraY));
-
-  // 3. Draw Enemies
   enemies.forEach((e) => e.draw(ctx, cameraX, cameraY));
-
-  // 4. Draw Player
   player.draw(ctx, cameraX, cameraY);
-
-  // 5. Draw Projectiles
   projectiles.forEach((p) => p.draw(ctx, cameraX, cameraY));
-
-  // 6. Draw Particles
   particles.forEach((pt) => pt.draw(ctx, cameraX, cameraY));
 
-  // 7. Draw Floating Texts
   floatingTexts.forEach((ft) => {
     const screenX = ft.x - cameraX;
     const screenY = ft.y - cameraY;
@@ -956,5 +1013,4 @@ function render() {
   });
 }
 
-// Run Initialization when DOM is ready
 window.addEventListener('DOMContentLoaded', init);
